@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { handle } from "hono/cloudflare-pages";
 import { cors } from "hono/cors";
 import { getImagePreviewProvider } from "../../server/ai";
 import { estimateGeminiImageCostUsd, normalizeModelSelection } from "../../server/utils/costs";
@@ -242,4 +243,4 @@ app.post("/api/cases/:id/generate", async (c) => {
   }
 });
 
-export const onRequest = app.fetch;
+export const onRequest = handle(app);
