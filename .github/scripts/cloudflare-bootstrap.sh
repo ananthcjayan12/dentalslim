@@ -11,15 +11,38 @@ export CLOUDFLARE_API_TOKEN
 export CLOUDFLARE_ACCOUNT_ID
 
 echo "Checking Pages project..."
-if ! npx wrangler pages project list --json | jq -e --arg p "$CLOUDFLARE_PAGES_PROJECT" '.[] | select(.name == $p)' > /dev/null; then
-  npx wrangler pages project create "$CLOUDFLARE_PAGES_PROJECT" --production-branch=main
+if ! npx wrangler pages project list 2>/dev/null | grep -Fq "$CLOUDFLARE_PAGES_PROJECT"; then
+  npx wrangler pages project create "$CLOUDFLARE_PAGES_PROJECT" --production-branch=main || true
 fi
 
+resolve_d1_id() {
+  local id=""
+
+  # Try JSON first (newer wrangler)
+  if out_json="$(npx wrangler d1 list --json 2>/dev/null)"; then
+    id="$(printf "%s" "$out_json" | jq -r --arg n "$CLOUDFLARE_D1_DB_NAME" '.[] | select(.name == $n) | .uuid' | head -n1 || true)"
+  fi
+
+  # Fallback: parse table output
+  if [ -z "${id:-}" ] || [ "$id" = "null" ]; then
+    id="$(npx wrangler d1 list 2>/dev/null | grep -F "$CLOUDFLARE_D1_DB_NAME" | grep -Eo '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})' | head -n1 || true)"
+  fi
+
+  printf "%s" "$id"
+}
+
 echo "Checking D1 database..."
-D1_ID="$(npx wrangler d1 list --json | jq -r --arg n "$CLOUDFLARE_D1_DB_NAME" '.[] | select(.name == $n) | .uuid' | head -n1)"
+D1_ID="$(resolve_d1_id)"
 if [ -z "$D1_ID" ] || [ "$D1_ID" = "null" ]; then
-  npx wrangler d1 create "$CLOUDFLARE_D1_DB_NAME" > /tmp/d1_create.txt
-  D1_ID="$(grep -Eo '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})' /tmp/d1_create.txt | head -n1)"
+  create_out="$(npx wrangler d1 create "$CLOUDFLARE_D1_DB_NAME" 2>&1 || true)"
+  echo "$create_out"
+
+  # If it already exists, resolve again; else parse from create output
+  if echo "$create_out" | grep -qi "already exists"; then
+    D1_ID="$(resolve_d1_id)"
+  else
+    D1_ID="$(printf "%s" "$create_out" | grep -Eo '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})' | head -n1 || true)"
+  fi
 fi
 
 if [ -z "$D1_ID" ] || [ "$D1_ID" = "null" ]; then
@@ -28,8 +51,17 @@ if [ -z "$D1_ID" ] || [ "$D1_ID" = "null" ]; then
 fi
 
 echo "Checking R2 bucket..."
-if ! npx wrangler r2 bucket list --json | jq -e --arg b "$CLOUDFLARE_R2_BUCKET" '.[] | select(.name == $b)' > /dev/null; then
-  npx wrangler r2 bucket create "$CLOUDFLARE_R2_BUCKET"
+if ! npx wrangler r2 bucket list 2>/dev/null | grep -Fxq "$CLOUDFLARE_R2_BUCKET"; then
+  r2_create_out="$(npx wrangler r2 bucket create "$CLOUDFLARE_R2_BUCKET" 2>&1 || true)"
+  echo "$r2_create_out"
+  if echo "$r2_create_out" | grep -qi "already exists"; then
+    echo "R2 bucket already exists, continuing."
+  elif echo "$r2_create_out" | grep -qi "Successfully created"; then
+    echo "R2 bucket created."
+  else
+    echo "Failed to create or validate R2 bucket." >&2
+    exit 1
+  fi
 fi
 
 echo "Applying D1 schema migration..."
