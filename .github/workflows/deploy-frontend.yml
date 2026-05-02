@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
   PROJECT_NAME: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
   CLOUDFLARE_D1_DB_NAME: ${{ secrets.CLOUDFLARE_D1_DB_NAME }}
   CLOUDFLARE_R2_BUCKET: ${{ secrets.CLOUDFLARE_R2_BUCKET }}
@@ -58,7 +58,7 @@ jobs:
         run: npm run build
 
       - name: Install Wrangler
-        run: npm i -g wrangler@4
+        run: npm i -g wrangler@4.12.0
 
       - name: Bootstrap Cloudflare Resources (Pages, D1, R2, Schema)
         env:
