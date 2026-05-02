@@ -1,0 +1,94 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "20"
+  PROJECT_NAME: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+  CLOUDFLARE_D1_DB_NAME: ${{ secrets.CLOUDFLARE_D1_DB_NAME }}
+  CLOUDFLARE_R2_BUCKET: ${{ secrets.CLOUDFLARE_R2_BUCKET }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Wrangler
+        run: npm i -g wrangler@4
+
+      - name: Bootstrap Cloudflare Resources (Pages, D1, R2, Schema)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PAGES_PROJECT: ${{ env.PROJECT_NAME }}
+          CLOUDFLARE_D1_DB_NAME: ${{ env.CLOUDFLARE_D1_DB_NAME }}
+          CLOUDFLARE_R2_BUCKET: ${{ env.CLOUDFLARE_R2_BUCKET }}
+        run: ./.github/scripts/cloudflare-bootstrap.sh
+
+      - name: Patch wrangler.toml with runtime IDs
+        run: |
+          sed -i "s/database_name = \"dentalsim-db\"/database_name = \"${CLOUDFLARE_D1_DB_NAME}\"/" wrangler.toml
+          sed -i "s/database_id = \"REPLACE_WITH_D1_DATABASE_ID\"/database_id = \"${D1_DATABASE_ID}\"/" wrangler.toml
+          sed -i "s/bucket_name = \"dentalsim-images\"/bucket_name = \"${CLOUDFLARE_R2_BUCKET}\"/" wrangler.toml
+
+      - name: Sync Gemini Secret to Cloudflare Pages
+        if: ${{ secrets.GEMINI_API_KEY != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          printf "%s" "$GEMINI_API_KEY" | npx wrangler pages secret put GEMINI_API_KEY --project-name "$PROJECT_NAME"
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: ${{ env.PROJECT_NAME }}
+          directory: dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

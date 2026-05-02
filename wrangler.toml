@@ -1,0 +1,19 @@
+name = "dentalsim-pro"
+compatibility_date = "2026-05-01"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dentalsim-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "dentalsim-images"
+
+[vars]
+APP_ENV = "development"
+AI_PROVIDER = "gemini"
+DEFAULT_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
+DEFAULT_IMAGE_SIZE = "0.5K"
+DEFAULT_ASPECT_RATIO = "4:3"
