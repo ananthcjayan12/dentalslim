@@ -64,6 +64,11 @@ if ! npx wrangler r2 bucket list 2>/dev/null | grep -Fxq "$CLOUDFLARE_R2_BUCKET"
   fi
 fi
 
+echo "Patching wrangler.toml with resolved resource identifiers..."
+sed -i "s/database_name = \"dentalsim-db\"/database_name = \"${CLOUDFLARE_D1_DB_NAME}\"/" wrangler.toml
+sed -i "s/database_id = \"REPLACE_WITH_D1_DATABASE_ID\"/database_id = \"${D1_ID}\"/" wrangler.toml
+sed -i "s/bucket_name = \"dentalsim-images\"/bucket_name = \"${CLOUDFLARE_R2_BUCKET}\"/" wrangler.toml
+
 echo "Applying D1 schema migration..."
 npx wrangler d1 execute "$CLOUDFLARE_D1_DB_NAME" --remote --file ./server/db/schema.sql
 
