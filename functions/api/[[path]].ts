@@ -39,6 +39,28 @@ declare global {
 const app = new Hono<{ Bindings: Env }>();
 app.use("*", cors());
 
+app.onError((error, c) => {
+  console.error("Pages Function error", error);
+  return c.json(
+    {
+      error: "Server configuration issue. Please verify Cloudflare bindings and deploy settings.",
+    },
+    500
+  );
+});
+
+app.use("/api/*", async (c, next) => {
+  if (!c.env.DB) {
+    return c.json({ error: "Missing Cloudflare D1 binding: DB" }, 500);
+  }
+
+  if (!c.env.IMAGES) {
+    return c.json({ error: "Missing Cloudflare R2 binding: IMAGES" }, 500);
+  }
+
+  await next();
+});
+
 function toCase(row: CaseRow) {
   return {
     id: row.id,
